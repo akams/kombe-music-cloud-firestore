@@ -24,7 +24,9 @@ const env = functions.config();
 
 const APP_ID = env.algolia.appid;
 const ADMIN_KEY = env.algolia.apikey;
-const INDEX_NAME = 'dev_ZOO_SEARCH';
+
+const INDEX_NAME = 'dev_TRACK_SEARCH';
+const POCK_INDEX_NAME = 'dev_ZOO_SEARCH';
 
 exports.indexAnimal = functions.firestore
   .document('zoo/{animalId}')
@@ -42,7 +44,7 @@ exports.indexAnimal = functions.firestore
     console.log('record to imported into Algolia', record);
 
     const client = algoliasearch(APP_ID, ADMIN_KEY);
-    const index = client.initIndex(INDEX_NAME);
+    const index = client.initIndex(POCK_INDEX_NAME);
 
     index
     .saveObject(record)
@@ -61,23 +63,61 @@ exports.unindexAnimal = functions.firestore
     console.log('onDelete');
     const objectID = snap.id;
     console.log('record to delete into Algolia', objectID);
+
+    const client = algoliasearch(APP_ID, ADMIN_KEY);
+    const index = client.initIndex(POCK_INDEX_NAME);
+
     return index.deleteObject(objectID)
   });
 
 exports.algoliaRequest = functions.https.onRequest(main);
 
-app.get('/warmup', async (request, response) => {
+app.post('/import-collection-music-to-algolia', async (request, response) => {
   try {
     const db = admin.firestore();
-    const snapshot = await db.collection('zoo').get();
+    const snapshotMusic = await db.collection('music').orderBy('uploadAt', 'desc').get();
+    const snapshotAlbum = await db.collection('albums').get();
     
-    const records = [];
-    snapshot.forEach((doc) => {
-      records.push({
+    const recordsMusic = [];
+    snapshotMusic.forEach((doc) => {
+      recordsMusic.push({
         objectID: doc.id,
         ...doc.data(),
       });
     });
+
+    const recordsAlbums = [];
+    snapshotAlbum.forEach((doc) => {
+      recordsAlbums.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
+
+    const records = recordsMusic.map((music) => {
+      const album = recordsAlbums.map((album) => {
+        if (music.album === album.id) {
+          return {
+            albumName: album.name,
+          }
+        }
+        return undefined;
+      }).filter((v) => typeof v !== "undefined");
+      return {
+        ...music,
+        ...album[0],
+      }
+    }).map((clean) => {
+      return {
+        objectID: clean.objectID,
+        name: clean.name,
+        fileName: clean.fileName,
+        author: clean.author,
+        tags: clean.tags,
+        albumName: clean.albumName,
+        uploadAt: clean.uploadAt,
+      }
+    })
 
     const client = algoliasearch(APP_ID, ADMIN_KEY);
     const index = client.initIndex(INDEX_NAME);
