@@ -115,7 +115,7 @@ app.post('/import-collection-music-to-algolia', async (request, response) => {
         author: clean.author,
         tags: clean.tags,
         albumName: clean.albumName,
-        uploadAt: clean.uploadAt,
+        uploadAt: clean.uploadAt._seconds * 1000,
       }
     })
 
